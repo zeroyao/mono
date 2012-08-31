@@ -281,12 +281,12 @@ namespace System.IO {
 #if !NET_2_1 && !DISABLE_SECURITY
 		public FileSecurity GetAccessControl ()
 		{
-			throw new NotImplementedException ();
+			return File.GetAccessControl (FullPath); 
 		}
 		
 		public FileSecurity GetAccessControl (AccessControlSections includeSections)
 		{
-			throw new NotImplementedException ();
+			return File.GetAccessControl (FullPath, includeSections);
 		}
 #endif
 #if NET_2_0 && !NET_2_1 || UNITY
@@ -334,7 +334,7 @@ namespace System.IO {
 #if NET_2_0 && !NET_2_1 && !DISABLE_SECURITY
 		public void SetAccessControl (FileSecurity fileSecurity)
 		{
-			throw new NotImplementedException ();
+			File.SetAccessControl (FullPath, fileSecurity);
 		}
 #endif
 	}

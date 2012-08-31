@@ -2277,9 +2277,11 @@ namespace Mono.CSharp {
 				}
 			}
 
+			var report = ctx.Module.Compiler.Report;
+
 			var retval = ctx.LookupNamespaceOrType (Name, Arity, LookupMode.IgnoreAccessibility, loc);
 			if (retval != null) {
-				ctx.Module.Compiler.Report.SymbolRelatedToPreviousError (retval.Type);
+				report.SymbolRelatedToPreviousError (retval.Type);
 				ErrorIsInaccesible (ctx, retval.GetSignatureForError (), loc);
 				return;
 			}
@@ -2290,7 +2292,17 @@ namespace Mono.CSharp {
 				return;
 			}
 
-			NamespaceContainer.Error_NamespaceNotFound (loc, Name, ctx.Module.Compiler.Report);
+			var ns_candidates = ctx.Module.GlobalRootNamespace.FindTypeNamespaces (ctx, Name, Arity);
+			if (ns_candidates != null) {
+				string usings = string.Join ("' or `", ns_candidates.ToArray ());
+				report.Error (246, loc,
+					"The type or namespace name `{0}' could not be found. Are you missing `{1}' using directive?",
+					Name, usings);
+			} else {
+				report.Error (246, loc,
+					"The type or namespace name `{0}' could not be found. Are you missing an assembly reference?",
+					Name);
+			}
 		}
 
 		public override FullNamedExpression ResolveAsTypeOrNamespace (IMemberContext ec)
@@ -3171,8 +3183,12 @@ namespace Mono.CSharp {
 			}
 
 			var me = ExtensionExpression as MemberExpr;
-			if (me != null)
+			if (me != null) {
 				me.ResolveInstanceExpression (ec, null);
+				var fe = me as FieldExpr;
+				if (fe != null)
+					fe.Spec.MemberDefinition.SetIsUsed ();
+			}
 
 			InstanceExpression = null;
 			return this;
@@ -3440,6 +3456,11 @@ namespace Mono.CSharp {
 			} else {
 				best_candidate = base_override;
 				best_candidate_return = best_candidate.ReturnType;
+			}
+
+			if (best_candidate.IsGeneric && TypeParameterSpec.HasAnyTypeParameterConstrained (best_candidate.GenericDefinition)) {
+				ConstraintChecker cc = new ConstraintChecker (ec);
+				cc.CheckAll (best_candidate.GetGenericMethodDefinition (), best_candidate.TypeArguments, best_candidate.Constraints, loc);
 			}
 
 			//
@@ -3743,7 +3764,9 @@ namespace Mono.CSharp {
 				if (!TypeSpecComparer.Equals (p_m.Parameters.Types, q_m.Parameters.Types))
 					return 0;
 
+				var orig_p = p;
 				p = p_m.ReturnType;
+				var orig_q = q;
 				q = q_m.ReturnType;
 
 				//
@@ -3760,20 +3783,33 @@ namespace Mono.CSharp {
 					return p.Kind != MemberKind.Void ? 1: 0;
 				}
 
+				var am = (AnonymousMethodExpression) a.Expr;
+
 				//
 				// When anonymous method is an asynchronous, and P has a return type Task<Y1>, and Q has a return type Task<Y2>
 				// better conversion is performed between underlying types Y1 and Y2
 				//
 				if (p.IsGenericTask || q.IsGenericTask) {
-					var async_am = a.Expr as AnonymousMethodExpression;
-					if (async_am != null && async_am.Block.IsAsync) {
-
+					if (am.Block.IsAsync) {
 						if (p.IsGenericTask != q.IsGenericTask) {
 							return 0;
 						}
 
 						q = q.TypeArguments[0];
 						p = p.TypeArguments[0];
+					}
+				} else if (q != p) {
+					//
+					// LAMESPEC: Lambda expression returning dynamic type has identity (better) conversion to delegate returning object type
+					//
+					if (q.BuiltinType == BuiltinTypeSpec.Type.Object) {
+						var am_rt = am.InferReturnType (ec, null, orig_q);
+						if (am_rt != null && am_rt.BuiltinType == BuiltinTypeSpec.Type.Dynamic)
+							return 2;
+					} else if (p.BuiltinType == BuiltinTypeSpec.Type.Object) {
+						var am_rt = am.InferReturnType (ec, null, orig_p);
+						if (am_rt != null && am_rt.BuiltinType == BuiltinTypeSpec.Type.Dynamic)
+							return 1;
 					}
 				}
 
@@ -3979,19 +4015,20 @@ namespace Mono.CSharp {
 			//
 			//  Foo (int i) is better than Foo (int i, long l = 0)
 			//  Foo (params int[] args) is better than Foo (int i = 0, params int[] args)
+			//  Foo (string s, params string[] args) is better than Foo (params string[] args)
 			//
 			// Prefer non-optional version
 			//
 			// LAMESPEC: Specification claims this should be done at last but the opposite is true
 			//
 			if (candidate_params == best_params && candidate_pd.Count != best_pd.Count) {
-				if (candidate_pd.Count >= best_pd.Count)
-					return false;
-
 				if (j < candidate_pd.Count && candidate_pd.FixedParameters[j].HasDefaultValue)
 					return false;
 
-				return true;
+				if (j < best_pd.Count && best_pd.FixedParameters[j].HasDefaultValue)
+					return true;
+
+				return candidate_pd.Count >= best_pd.Count;
 			}
 
 			//
@@ -4051,6 +4088,32 @@ namespace Mono.CSharp {
 				return true;
 
 			return false;
+		}
+
+		static bool CheckInflatedArguments (MethodSpec ms)
+		{
+			if (!TypeParameterSpec.HasAnyTypeParameterTypeConstrained (ms.GenericDefinition))
+				return true;
+
+			// Setup constraint checker for probing only
+			ConstraintChecker cc = new ConstraintChecker (null);
+
+			var mp = ms.Parameters.Types;
+			for (int i = 0; i < mp.Length; ++i) {
+				var type = mp[i] as InflatedTypeSpec;
+				if (type == null)
+					continue;
+
+				var targs = type.TypeArguments;
+				if (targs.Length == 0)
+					continue;
+
+				// TODO: Checking inflated MVAR arguments should be enough
+				if (!cc.CheckAll (type.GetDefinition (), targs, type.Constraints, Location.Null))
+					return false;
+			}
+
+			return true;
 		}
 
 		public static void Error_ConstructorMismatch (ResolveContext rc, TypeSpec type, int argCount, Location loc)
@@ -4208,9 +4271,6 @@ namespace Mono.CSharp {
 			TypeSpec[] ptypes;
 			var ms = candidate as MethodSpec;
 			if (ms != null && ms.IsGeneric) {
-				// Setup constraint checker for probing only
-				ConstraintChecker cc = new ConstraintChecker (null);
-
 				if (type_arguments != null) {
 					var g_args_count = ms.Arity;
 					if (g_args_count != type_arguments.Count)
@@ -4256,14 +4316,12 @@ namespace Mono.CSharp {
 					if (i_args.Length != 0) {
 						ms = ms.MakeGenericMethod (ec, i_args);
 					}
-
-					cc.IgnoreInferredDynamic = true;
 				}
 
 				//
 				// Type arguments constraints have to match for the method to be applicable
 				//
-				if (!cc.CheckAll (ms.GetGenericMethodDefinition (), ms.TypeArguments, ms.Constraints, loc)) {
+				if (!CheckInflatedArguments (ms)) {
 					candidate = ms;
 					return int.MaxValue - 25000;
 				}
@@ -4490,7 +4548,7 @@ namespace Mono.CSharp {
 					return p;
 				if (specific == ac_q.Element)
 					return q;
-			} else if (TypeManager.IsGenericType (p)) {
+			} else if (p.IsGeneric && q.IsGeneric) {
 				var pargs = TypeManager.GetTypeArguments (p);
 				var qargs = TypeManager.GetTypeArguments (q);
 
@@ -4726,6 +4784,17 @@ namespace Mono.CSharp {
 						args [0].Type.GetSignatureForError (), best_candidate.Name, best_candidate.GetSignatureForError ());
 				}
 
+				//
+				// Check type constraints only when explicit type arguments are used
+				//
+				if (best_candidate.IsGeneric && type_arguments != null) {
+					MethodSpec bc = best_candidate as MethodSpec;
+					if (bc != null && TypeParameterSpec.HasAnyTypeParameterConstrained (bc.GenericDefinition)) {
+						ConstraintChecker cc = new ConstraintChecker (rc);
+						cc.CheckAll (bc.GetGenericMethodDefinition (), bc.TypeArguments, bc.Constraints, loc);
+					}
+				}
+
 				BestCandidateIsDynamic = true;
 				return null;
 			}
@@ -4779,13 +4848,18 @@ namespace Mono.CSharp {
 				return null;
 
 			//
-			// Check ObsoleteAttribute on the best method
+			// Don't run possibly expensive checks in probing mode
 			//
-			ObsoleteAttribute oa = best_candidate.GetAttributeObsolete ();
-			if (oa != null && !rc.IsObsolete)
-				AttributeTester.Report_ObsoleteMessage (oa, best_candidate.GetSignatureForError (), loc, rc.Report);
+			if (!rc.IsInProbingMode) {
+				//
+				// Check ObsoleteAttribute on the best method
+				//
+				ObsoleteAttribute oa = best_candidate.GetAttributeObsolete ();
+				if (oa != null && !rc.IsObsolete)
+					AttributeTester.Report_ObsoleteMessage (oa, best_candidate.GetSignatureForError (), loc, rc.Report);
 
-			best_candidate.MemberDefinition.SetIsUsed ();
+				best_candidate.MemberDefinition.SetIsUsed ();
+			}
 
 			args = best_candidate_args;
 			return (T) best_candidate;
@@ -4808,7 +4882,7 @@ namespace Mono.CSharp {
 			if (a is CollectionElementInitializer.ElementInitializerArgument) {
 				ec.Report.SymbolRelatedToPreviousError (method);
 				if ((expected_par.FixedParameters[idx].ModFlags & Parameter.Modifier.RefOutMask) != 0) {
-					ec.Report.Error (1954, loc, "The best overloaded collection initalizer method `{0}' cannot have 'ref', or `out' modifier",
+					ec.Report.Error (1954, loc, "The best overloaded collection initalizer method `{0}' cannot have `ref' or `out' modifier",
 						TypeManager.CSharpSignature (method));
 					return;
 				}
@@ -4842,7 +4916,12 @@ namespace Mono.CSharp {
 					p2 = paramType.GetSignatureForErrorIncludingAssemblyName ();
 				}
 
-				ec.Report.Error (1503, loc,
+				if ((mod & Parameter.Modifier.RefOutMask) != 0) {
+					p1 = Parameter.GetModifierSignature (a.Modifier) + " " + p1;
+					p2 = Parameter.GetModifierSignature (a.Modifier) + " " + p2;
+				}
+
+				ec.Report.Error (1503, a.Expr.Location,
 					"Argument `#{0}' cannot convert `{1}' expression to type `{2}'", index, p1, p2);
 			}
 		}
@@ -5284,6 +5363,8 @@ namespace Mono.CSharp {
 
 		protected override Expression DoResolve (ResolveContext ec)
 		{
+			spec.MemberDefinition.SetIsUsed ();
+
 			return DoResolve (ec, null);
 		}
 
@@ -5503,8 +5584,6 @@ namespace Mono.CSharp {
 		{
 			bool is_volatile = (spec.Modifiers & Modifiers.VOLATILE) != 0;
 
-			spec.MemberDefinition.SetIsUsed ();
-			
 			if (IsStatic){
 				if (is_volatile)
 					ec.Emit (OpCodes.Volatile);

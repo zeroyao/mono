@@ -1791,6 +1791,7 @@ mono_class_layout_fields (MonoClass *class)
 				continue;
 
 			size = mono_type_size (field->type, &align);
+			align = class->packing_size ? MIN (class->packing_size, align): align;
 			class->min_align = MAX (align, class->min_align);
 
 			/*
@@ -1814,6 +1815,10 @@ mono_class_layout_fields (MonoClass *class)
 			real_size = MAX (real_size, size + field->offset);
 		}
 		class->instance_size = MAX (real_size, class->instance_size);
+		if (class->instance_size & (class->min_align - 1)) {
+			class->instance_size += class->min_align - 1;
+			class->instance_size &= ~(class->min_align - 1);
+		}
 		break;
 	}
 
@@ -5757,7 +5762,7 @@ make_generic_param_class (MonoGenericParam *param, MonoImage *image, gboolean is
 static MonoClass *
 get_anon_gparam_class (MonoGenericParam *param, gboolean is_mvar)
 {
-	int n = mono_generic_param_num (param);
+	int n = mono_generic_param_num (param) | ((guint32)param->serial << 16);
 	MonoImage *image = param->image;
 	GHashTable *ht;
 
@@ -5780,7 +5785,7 @@ get_anon_gparam_class (MonoGenericParam *param, gboolean is_mvar)
 static void
 set_anon_gparam_class (MonoGenericParam *param, gboolean is_mvar, MonoClass *klass)
 {
-	int n = mono_generic_param_num (param);
+	int n = mono_generic_param_num (param) | ((guint32)param->serial << 16);
 	MonoImage *image = param->image;
 	GHashTable *ht;
 

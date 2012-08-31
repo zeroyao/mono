@@ -94,7 +94,6 @@ static LOSSection *los_sections = NULL;
 static LOSFreeChunks *los_fast_free_lists [LOS_NUM_FAST_SIZES]; /* 0 is for larger sizes */
 static mword los_num_objects = 0;
 static int los_num_sections = 0;
-static mword next_los_collection = 2*1024*1024; /* 2 MB, need to tune */
 
 //#define USE_MALLOC
 //#define LOS_CONSISTENCY_CHECK
@@ -359,10 +358,7 @@ sgen_los_alloc_large_inner (MonoVTable *vtable, size_t size)
 	los_segment_index += size + sizeof (LOSObject);
 	g_assert (los_segment_index <= LOS_SEGMENT_SIZE);
 #else
-	if (sgen_need_major_collection (size)) {
-		DEBUG (4, fprintf (gc_debug_file, "Should trigger major collection: req size %zd (los already: %lu, limit: %lu)\n", size, (unsigned long)los_memory_usage, (unsigned long)next_los_collection));
-		sgen_collect_major_no_lock ("LOS overflow");
-	}
+	sgen_ensure_free_space (size);
 
 #ifdef USE_MALLOC
 	obj = malloc (size + sizeof (LOSObject));

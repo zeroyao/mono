@@ -70,7 +70,11 @@ namespace System.Runtime.InteropServices
 		}
 
 #if !DISABLE_SECURITY
+#if NET_4_0
+		[SecuritySafeCritical]
+#else
 		[SecurityPermission (SecurityAction.Demand, UnmanagedCode = true)]
+#endif
 #endif
 		public static string GetSystemVersion ()
 		{

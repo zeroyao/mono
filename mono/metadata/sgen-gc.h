@@ -794,10 +794,11 @@ enum {
 
 void sgen_pin_object (void *object, SgenGrayQueue *queue) MONO_INTERNAL;
 void sgen_parallel_pin_or_update (void **ptr, void *obj, MonoVTable *vt, SgenGrayQueue *queue) MONO_INTERNAL;
-void sgen_collect_major_no_lock (const char *reason) MONO_INTERNAL;
-void sgen_collect_nursery_no_lock (size_t requested_size) MONO_INTERNAL;
-void sgen_minor_collect_or_expand_inner (size_t size) MONO_INTERNAL;
 void sgen_set_pinned_from_failed_allocation (mword objsize) MONO_INTERNAL;
+
+void sgen_ensure_free_space (size_t size) MONO_INTERNAL;
+void sgen_perform_collection (size_t requested_size, int generation_to_collect, const char *reason) MONO_INTERNAL;
+
 
 /* LOS */
 
@@ -844,7 +845,7 @@ gboolean sgen_can_alloc_size (size_t size) MONO_INTERNAL;
 void sgen_nursery_retire_region (void *address, ptrdiff_t size) MONO_INTERNAL;
 
 void sgen_nursery_alloc_prepare_for_minor (void) MONO_INTERNAL;
-void sgen_nursery_alloc_prepare_for_major (const char *reason) MONO_INTERNAL;
+void sgen_nursery_alloc_prepare_for_major (void) MONO_INTERNAL;
 
 char* sgen_alloc_for_promotion (char *obj, size_t objsize, gboolean has_references) MONO_INTERNAL;
 char* sgen_par_alloc_for_promotion (char *obj, size_t objsize, gboolean has_references) MONO_INTERNAL;
@@ -1047,6 +1048,16 @@ sgen_dummy_use (gpointer v) {
 #error "Implement sgen_dummy_use for your compiler"
 #endif
 }
+
+
+typedef struct {
+	int generation;
+	const char *reason;
+	gboolean is_overflow;
+	SGEN_TV_DECLARE (total_time);
+	SGEN_TV_DECLARE (stw_time);
+	SGEN_TV_DECLARE (bridge_time);
+} GGTimingInfo;
 
 #endif /* HAVE_SGEN_GC */
 

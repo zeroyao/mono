@@ -74,7 +74,7 @@ namespace System.Threading
 			Handle = NativeEventCalls.CreateEvent_internal (manual, initialState, name, out createdNew);
 		}
 #if !NET_2_1 && !DISABLE_SECURITY
-		[MonoTODO ("Implement access control")]
+		[MonoTODO ("Use access control in CreateEvent_internal")]
 		public EventWaitHandle (bool initialState, EventResetMode mode,
 					string name, out bool createdNew,
 					EventWaitHandleSecurity eventSecurity)
@@ -83,10 +83,13 @@ namespace System.Threading
 			Handle = NativeEventCalls.CreateEvent_internal (manual, initialState, name, out createdNew);
 		}
 		
-		[MonoTODO]
 		public EventWaitHandleSecurity GetAccessControl ()
 		{
-			throw new NotImplementedException ();
+			return new EventWaitHandleSecurity (SafeWaitHandle,
+							    AccessControlSections.Owner |
+							    AccessControlSections.Group |
+							    AccessControlSections.Access);
+
 		}
 		
 		public static EventWaitHandle OpenExisting (string name)
@@ -138,10 +141,13 @@ namespace System.Threading
 			}
 		}
 #if !NET_2_1 && !DISABLE_SECURITY
-		[MonoTODO]
 		public void SetAccessControl (EventWaitHandleSecurity eventSecurity)
 		{
-			throw new NotImplementedException ();
+			if (null == eventSecurity)
+				throw new ArgumentNullException ("eventSecurity");
+				
+			eventSecurity.PersistModifications (SafeWaitHandle);
+
 		}
 #endif
 	}
