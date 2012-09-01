@@ -11,6 +11,10 @@ libgc_libs=$(LIBGC_LIBS)
 libgc_static_libs=$(LIBGC_STATIC_LIBS)
 endif
 
+if !PLATFORM_DARWIN
+export_dynamic=-export-dynamic
+endif
+
 libs=	\
 	$(monodir)/mono/metadata/libmonoruntime.la	\
 	$(monodir)/mono/io-layer/libwapi.la	\
@@ -208,7 +212,7 @@ mono_LDADD = \
 	$(MONO_DTRACE_OBJECT)
 
 mono_LDFLAGS = \
-	$(static_flags) -export-dynamic $(monobinldflags) $(monobin_platform_ldflags)
+	$(static_flags) $(export_dynamic) $(monobinldflags) $(monobin_platform_ldflags)
 
 mono_sgen_LDADD = \
 	$(MONO_SGEN_LIB)	\
@@ -218,7 +222,7 @@ mono_sgen_LDADD = \
 	-lm			\
 	$(MONO_DTRACE_OBJECT)
 
-mono_sgen_LDFLAGS = $(static_flags) -export-dynamic $(monobinldflags) $(monobin_platform_ldflags)
+mono_sgen_LDFLAGS = $(static_flags) $(export_dynamic) $(monobinldflags) $(monobin_platform_ldflags)
 
 if DTRACE_G_REQUIRED
 
