@@ -52,7 +52,7 @@ struct sigcontext {
 #define MONO_ARCH_USE_SIGACTION
 #endif
 
-#if defined(__native_client__)
+#if defined(__native_client__) || defined(PLATFORM_ANDROID)
 #undef MONO_ARCH_USE_SIGACTION
 #endif
 

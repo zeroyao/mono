@@ -33,7 +33,7 @@
 #define MONO_SIGNAL_USE_SIGACTION
 #endif
 
-#if defined(__native_client__)
+#if defined(__native_client__) || defined(PLATFORM_ANDROID)
 #undef MONO_SIGNAL_USE_SIGACTION
 #endif
 
