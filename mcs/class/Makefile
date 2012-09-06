@@ -166,6 +166,9 @@ monodroid_dirs := \
 	Mono.CSharp	\
 	Microsoft.CSharp
 
+unity_dirs := \
+	Mono.CompilerServices.SymbolWriter
+
 net_3_5_only_dirs := \
 	Microsoft.Build.Framework	\
 	Microsoft.Build.Utilities	\
@@ -212,7 +215,7 @@ net_2_0_SUBDIRS := $(common_dirs) $(net_2_0_dirs) $(net_2_0_only_dirs) aot-compi
 moonlight_raw_SUBDIRS := $(moonlight_raw_dirs)
 monodroid_SUBDIRS := $(mobile_dirs) $(monodroid_dirs)
 monotouch_SUBDIRS := $(mobile_dirs)
-unity_SUBDIRS := $(mobile_dirs)
+unity_SUBDIRS := $(mobile_dirs) $(unity_dirs)
 mobile_SUBDIRS := $(mobile_dirs)
 net_3_5_SUBDIRS := $(net_3_5_only_dirs)
 net_4_0_SUBDIRS := $(common_dirs) $(net_2_0_dirs) $(net_4_0_dirs) $(net_4_0_only_dirs)
