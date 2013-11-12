@@ -5,14 +5,14 @@ typedef struct _LinearAllocator LinearAllocator;
 typedef struct _MonoObjectGraph MonoObjectGraph;
 typedef struct _ObjectGraphNode ObjectGraphNode;
 typedef struct _ObjectGraphEdge ObjectGraphEdge;
-typedef struct _ValueField ValueField;
+//typedef struct _ValueField ValueField;
 typedef struct _QueuedNode QueuedNode;
 
 typedef struct _LinearAllocator
 {
 	guchar* buffer;
-	guint totalSize;
-	guint allocated;
+	guint32 totalSize;
+	guint32 allocated;
 } LinearAllocator;
 
 // graph's node, representing a reference i.e. MonoObject

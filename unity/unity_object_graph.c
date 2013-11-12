@@ -20,7 +20,7 @@ struct _TraverseContext
 //////////////////////////////////////////////////////////////////////////////
 // Memory management
 
-void mono_object_graph_initialize_allocator (MonoObjectGraph* objectGraph, guchar* buffer, guint bufferSize)
+void mono_object_graph_initialize_allocator (MonoObjectGraph* objectGraph, guchar* buffer, guint32 bufferSize)
 {
 	LinearAllocator* allocator = &objectGraph->allocator;
 	allocator->buffer = buffer;
@@ -28,7 +28,7 @@ void mono_object_graph_initialize_allocator (MonoObjectGraph* objectGraph, gucha
 	allocator->allocated = 0;
 }
 
-void* mono_object_graph_allocate (MonoObjectGraph* g, guint size, guint alignment)
+void* mono_object_graph_allocate (MonoObjectGraph* g, guint32 size, guint32 alignment)
 {
 	gsize next = (gsize)g->allocator.buffer + g->allocator.allocated;
 	next = (next + alignment - 1) & ~(alignment - 1);
@@ -43,7 +43,7 @@ void* mono_object_graph_allocate (MonoObjectGraph* g, guint size, guint alignmen
 
 #define LINEAR_ALLOC(type, size, g) (type*)mono_object_graph_allocate(g, (size), 8)
 
-MonoObjectGraph* mono_object_graph_initialize (gpointer buffer, guint bufferSize)
+MonoObjectGraph* mono_object_graph_initialize (gpointer buffer, guint32 bufferSize)
 {
 	MonoObjectGraph* g = (MonoObjectGraph*)(((gsize)buffer + 7) & ~7);
 	g_assert (((gsize)(g + 1) - (gsize)buffer) <= bufferSize);
@@ -157,16 +157,15 @@ static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name
 //////////////////////////////////////////////////////////////////////////////
 // Public interface
 
-MonoObjectGraph* mono_unity_object_graph_dump (gpointer* rootHandles, guint numRoots, gpointer buffer, guint bufferSize)
+MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32 numRoots, gpointer buffer, guint32 bufferSize)
 {
-	guint i;
+	guint32 i;
 	ObjectGraphNode* node;
 	TraverseContext ctx;
 
 	MonoObjectGraph* g = mono_object_graph_initialize(buffer, bufferSize);
-	g->roots = LINEAR_ALLOC (MonoObject*, sizeof(MonoObject*)*numRoots, g);
-	for (i = 0; i < numRoots; ++i)
-		g->roots[i] = mono_gchandle_get_target (GPOINTER_TO_UINT (rootHandles[i]));
+	g->roots = LINEAR_ALLOC (MonoObject*, sizeof(MonoObject*) * numRoots, g);
+	memcpy (g->roots, rootObjects, sizeof(MonoObject*) * numRoots);
 
 	// enqueue roots
 	memset (&ctx, 0, sizeof(TraverseContext));
