@@ -171,12 +171,14 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	g = mono_object_graph_initialize(buffer, bufferSize);
 	g->roots = LINEAR_ALLOC (MonoObject*, sizeof(MonoObject*) * numRoots, g);
 	memcpy (g->roots, rootObjects, sizeof(MonoObject*) * numRoots);
+	g->rootNodes = LINEAR_ALLOC (ObjectGraphNode*, sizeof(ObjectGraphNode*) * numRoots, g);
+	memset (g->rootNodes, 0, sizeof(ObjectGraphNode*) * numRoots);
 
 	// enqueue roots
 	memset (&ctx, 0, sizeof(TraverseContext));
 	ctx.g = g;
 	for (i = 0; i < numRoots; ++i)
-		mono_object_graph_map (g->roots[i], TRUE, GET_VTABLE(g->roots[i])->klass, &ctx);
+		g->rootNodes[i] = mono_object_graph_map (g->roots[i], TRUE, GET_VTABLE (g->roots[i])->klass, &ctx);
 
 	while ((node = mono_object_graph_deque (&ctx)) != NULL)
 	{

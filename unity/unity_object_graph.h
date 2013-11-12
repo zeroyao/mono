@@ -59,11 +59,14 @@ struct _QueuedNode
 
 struct _MonoObjectGraph
 {
-	LinearAllocator	allocator;
+	LinearAllocator		allocator;
 
-	MonoObject**	roots;
-	QueuedNode*		allNodesBegin;
-	QueuedNode*		allNodesEnd;
+	MonoObject**		roots;
+	ObjectGraphNode**	rootNodes;
+	guint32				numRoots;
+
+	QueuedNode*			allNodesBegin;
+	QueuedNode*			allNodesEnd;
 };
 
 #endif
