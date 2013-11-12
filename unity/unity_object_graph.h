@@ -7,6 +7,7 @@ typedef struct _ObjectGraphNode ObjectGraphNode;
 typedef struct _ObjectGraphEdge ObjectGraphEdge;
 //typedef struct _ValueField ValueField;
 typedef struct _QueuedNode QueuedNode;
+typedef enum _EdgeType EdgeType;
 
 typedef struct _LinearAllocator
 {
@@ -31,7 +32,15 @@ struct _ObjectGraphEdge
 {
 	ObjectGraphEdge*	next;
 	const char*			name;
-	ObjectGraphNode*	reference;
+	EdgeType			type;
+	ObjectGraphNode*	otherNode;
+};
+
+enum _EdgeType
+{
+	EdgeType_Reference,
+	EdgeType_Value,
+	EdgeType_ArrayElement,
 };
 
 //// a value field
