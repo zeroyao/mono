@@ -149,6 +149,8 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, MonoClass* klass, Tr
 
 //////////////////////////////////////////////////////////////////////////////
 
+extern void GC_stop_world_external ();
+extern void GC_start_world_external ();
 static void mono_object_graph_traverse_generic	(ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx);
@@ -162,10 +164,15 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	guint32 i;
 	ObjectGraphNode* node;
 	TraverseContext ctx;
+	MonoObjectGraph* g;
 
-	MonoObjectGraph* g = mono_object_graph_initialize(buffer, bufferSize);
+	GC_stop_world_external ();
+
+	g = mono_object_graph_initialize(buffer, bufferSize);
 	g->roots = LINEAR_ALLOC (MonoObject*, sizeof(MonoObject*) * numRoots, g);
 	memcpy (g->roots, rootObjects, sizeof(MonoObject*) * numRoots);
+
+	GC_stop_world_external ();
 
 	// enqueue roots
 	memset (&ctx, 0, sizeof(TraverseContext));
@@ -180,6 +187,8 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	{
 		mono_object_graph_traverse_generic (node, &ctx);
 	}
+
+	GC_start_world_external ();
 
 	return g;
 }
