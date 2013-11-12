@@ -7,9 +7,6 @@
 
 //////////////////////////////////////////////////////////////////////////////
 
-typedef void* (*MonoObjectGraphMalloc) (guint size);
-typedef void (*MonoObjectGraphFree) (void* ptr);
-
 typedef struct _LinearAllocator LinearAllocator;
 typedef struct _MonoObjectGraph MonoObjectGraph;
 typedef struct _ObjectGraphNode ObjectGraphNode;
@@ -25,7 +22,6 @@ typedef struct _LinearAllocator
 	guchar* buffer;
 	guint totalSize;
 	guint allocated;
-	LinearAllocator* prev;
 } LinearAllocator;
 
 // graph's node, representing a reference i.e. MonoObject
@@ -70,65 +66,51 @@ struct _TraverseContext
 
 struct _MonoObjectGraph
 {
-	MonoObjectGraphMalloc	malloc;
-	MonoObjectGraphFree		free;
-	LinearAllocator*		allocator;
+	LinearAllocator	allocator;
 
-	MonoObject**			roots;
-	QueuedNode*				allNodesBegin;
-	QueuedNode*				allNodesEnd;
+	MonoObject**	roots;
+	QueuedNode*		allNodesBegin;
+	QueuedNode*		allNodesEnd;
 };
 
 //////////////////////////////////////////////////////////////////////////////
 // Memory management
 
-void mono_object_graph_add_allocator (MonoObjectGraph* objectGraph)
+void mono_object_graph_initialize_allocator (MonoObjectGraph* objectGraph, guchar* buffer, guint bufferSize)
 {
-	LinearAllocator* allocator = objectGraph->malloc (sizeof(LinearAllocator));
-	allocator->buffer = objectGraph->malloc (LINEAR_ALLOCATOR_CHUNK_SIZE);
-	allocator->totalSize = LINEAR_ALLOCATOR_CHUNK_SIZE;
+	LinearAllocator* allocator = &objectGraph->allocator;
+	allocator->buffer = buffer;
+	allocator->totalSize = bufferSize;
 	allocator->allocated = 0;
-	allocator->prev = objectGraph->allocator;
-	objectGraph->allocator = allocator;
 }
 
 void* mono_object_graph_allocate (MonoObjectGraph* g, guint size, guint alignment)
 {
-	gsize next = (gsize)g->allocator->buffer + g->allocator->allocated;
+	gsize next = (gsize)g->allocator.buffer + g->allocator.allocated;
 	next = (next + alignment - 1) & ~(alignment - 1);
-	if (next + size > (gsize)g->allocator->buffer + g->allocator->totalSize)
+	if (next + size > (gsize)g->allocator.buffer + g->allocator.totalSize)
 	{
-		mono_object_graph_add_allocator (g);
-		next = (gsize)g->allocator->buffer;
-		next = (next + alignment - 1) & ~(alignment - 1);
-		if (next + size > (gsize)g->allocator->buffer + g->allocator->totalSize)
-			return NULL;
+		g_assert_not_reached ();
+		return NULL;
 	}
-	g->allocator->allocated = next + size - (gsize)g->allocator->buffer;
+	g->allocator.allocated = next + size - (gsize)g->allocator.buffer;
 	return (void*)next;
 }
 
 #define LINEAR_ALLOC(type, size, g) (type*)mono_object_graph_allocate(g, (size), 8)
 
-MonoObjectGraph* mono_object_graph_initialize (MonoObjectGraphMalloc malloc, MonoObjectGraphFree free)
+MonoObjectGraph* mono_object_graph_initialize (gpointer buffer, guint bufferSize)
 {
-	MonoObjectGraph* g = malloc (sizeof(MonoObjectGraph));
+	MonoObjectGraph* g = (MonoObjectGraph*)(((gsize)buffer + 7) & ~7);
+	g_assert (((gsize)(g + 1) - (gsize)buffer) <= bufferSize);
+
 	memset (g, 0, sizeof(MonoObjectGraph));
-	g->malloc = malloc;
-	g->free = free;
-	mono_object_graph_add_allocator (g);
+	mono_object_graph_initialize_allocator (g, (guchar*)(g + 1), (gsize)buffer + bufferSize - (gsize)(g + 1));
 	return g;
 }
 
 void mono_object_graph_cleanup (MonoObjectGraph* g)
 {
-	LinearAllocator* alloc = g->allocator;
-	while (alloc != NULL)
-	{
-		g->free (alloc->buffer);
-		alloc = alloc->prev;
-	}
-	g->free (g);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -221,13 +203,13 @@ static void mono_object_graph_traverse_object	(ObjectGraphNode* node, TraverseCo
 //////////////////////////////////////////////////////////////////////////////
 // Public interface
 
-MonoObjectGraph* mono_unity_object_graph_dump (MonoObjectGraphMalloc malloc, MonoObjectGraphFree free, gpointer* rootHandles, guint numRoots, guint memorySize)
+MonoObjectGraph* mono_unity_object_graph_dump (gpointer* rootHandles, guint numRoots, gpointer buffer, guint bufferSize)
 {
 	guint i;
 	ObjectGraphNode* node;
 	TraverseContext ctx;
 
-	MonoObjectGraph* g = mono_object_graph_initialize(malloc, free);
+	MonoObjectGraph* g = mono_object_graph_initialize(buffer, bufferSize);
 	g->roots = LINEAR_ALLOC (MonoObject*, sizeof(MonoObject*)*numRoots, g);
 	for (i = 0; i < numRoots; ++i)
 		g->roots[i] = mono_gchandle_get_target (GPOINTER_TO_UINT (rootHandles[i]));
