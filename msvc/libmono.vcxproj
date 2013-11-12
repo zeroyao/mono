@@ -4267,6 +4267,7 @@
     </ClCompile>
     <ClCompile Include="..\unity\unity_cross_utils.c" />
     <ClCompile Include="..\unity\unity_liveness.c" />
+    <ClCompile Include="..\unity\unity_object_graph.c" />
     <ClCompile Include="..\unity\unity_utils.c" />
   </ItemGroup>
   <ItemGroup>
