@@ -655,6 +655,7 @@
     <ClInclude Include="..\mono\mini\regalloc.h" />
     <ClInclude Include="..\mono\mini\ssapre.h" />
     <ClInclude Include="..\mono\mini\trace.h" />
+    <ClInclude Include="..\unity\unity_object_graph.h" />
     <CustomBuildStep Include="..\mono\mini\mini-x86.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_eglib|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
