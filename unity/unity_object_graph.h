@@ -4,7 +4,7 @@
 typedef struct _LinearAllocator LinearAllocator;
 typedef struct _MonoObjectGraph MonoObjectGraph;
 typedef struct _ObjectGraphNode ObjectGraphNode;
-typedef struct _ObjectGraphEdge ObjectGraphEdge;
+typedef struct _ObjectGraphField ObjectGraphField;
 typedef struct _QueuedNode QueuedNode;
 
 typedef struct _LinearAllocator
@@ -23,14 +23,16 @@ struct _ObjectGraphNode
 	guint32				classType;
 	const char*			className;
 	guint32				classSize;
-	ObjectGraphEdge*	edgesBegin;
-	ObjectGraphEdge*	edgesEnd;
+	ObjectGraphField*	fieldsBegin;
+	ObjectGraphField*	fieldsEnd;
+	ObjectGraphField*	staticFieldsBegin;
+	ObjectGraphField*	staticFieldsEnd;
 };
 
-// graph's edge, representing a field of reference type
-struct _ObjectGraphEdge
+// graph's edge, representing a field
+struct _ObjectGraphField
 {
-	ObjectGraphEdge*	next;
+	ObjectGraphField*	next;
 	const char*			name;
 	ObjectGraphNode*	otherNode;
 };

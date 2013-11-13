@@ -161,7 +161,7 @@ extern void GC_start_world_external ();
 static void mono_object_graph_traverse_generic	(ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx);
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* reference, TraverseContext* ctx);
+static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* reference, gboolean isStatic, TraverseContext* ctx);
 
 //////////////////////////////////////////////////////////////////////////////
 // Public interface
@@ -266,7 +266,7 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 		}
 
 		elementNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, isElementValueType ? elementClass : NULL, ctx) : NULL;
-		mono_object_graph_push_edge (node, (const char*)i, elementNode, ctx);
+		mono_object_graph_push_edge (node, (const char*)i, elementNode, FALSE, ctx);
 	}
 }
 
@@ -277,7 +277,7 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 
 	guint32 i;
 	MonoClassField* field;
-	ObjectGraphNode* edgeNode;
+	ObjectGraphNode* fieldNode;
 
 	g_assert (object);
 
@@ -289,10 +289,7 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 		for (i = 0; i < klass->field.count; ++i)
 		{
 			field = &klass->fields[i];
-			if (field->type->attrs & FIELD_ATTRIBUTE_STATIC)
-				continue;
-
-			edgeNode = NULL;
+			fieldNode = NULL;
 
 			if (MONO_TYPE_ISSTRUCT (field->type))
 			{
@@ -301,10 +298,10 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 				if (field->type->type == MONO_TYPE_GENERICINST)
 				{
 					g_assert (field->type->data.generic_class->cached_class);
-					edgeNode = mono_object_graph_map ((MonoObject*)offseted - 1, FALSE, field->type->data.generic_class->cached_class, ctx);
+					fieldNode = mono_object_graph_map ((MonoObject*)offseted - 1, FALSE, field->type->data.generic_class->cached_class, ctx);
 				}
 				else
-					edgeNode = mono_object_graph_map ((MonoObject*)offseted - 1, FALSE, field->type->data.klass, ctx);
+					fieldNode = mono_object_graph_map ((MonoObject*)offseted - 1, FALSE, field->type->data.klass, ctx);
 			}
 			else
 			{
@@ -315,34 +312,47 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 					MonoObject* val = NULL;
 					mono_field_get_value (object, field, &val);
 					if (val != NULL)
-						edgeNode = mono_object_graph_map (val, TRUE, NULL, ctx);
+						fieldNode = mono_object_graph_map (val, TRUE, NULL, ctx);
 				}
 			}
 
-			mono_object_graph_push_edge (node, field->name, edgeNode, ctx);
+			mono_object_graph_push_edge (node, field->name, fieldNode, field->type->attrs & FIELD_ATTRIBUTE_STATIC, ctx);
 		}
 	}
 }
 
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* otherNode, TraverseContext* ctx)
+static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* otherNode, gboolean isStatic, TraverseContext* ctx)
 {
-	ObjectGraphEdge* edge;
+	ObjectGraphField* edge;
+	ObjectGraphField** edgesBegin;
+	ObjectGraphField** edgesEnd;
 
 	g_assert (node != NULL);
 
-	edge = LINEAR_ALLOC (ObjectGraphEdge, sizeof(ObjectGraphEdge), ctx->g);
-	memset (edge, 0, sizeof(ObjectGraphEdge));
+	edge = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField), ctx->g);
+	memset (edge, 0, sizeof(ObjectGraphField));
 	edge->name = name;
 	edge->otherNode = otherNode;
 
-	if (node->edgesBegin == NULL)
+	if (!isStatic)
 	{
-		g_assert (node->edgesEnd == NULL);
-		node->edgesBegin = node->edgesEnd = edge;
+		edgesBegin = &node->fieldsBegin;
+		edgesEnd = &node->fieldsEnd;
 	}
 	else
 	{
-		node->edgesEnd->next = edge;
-		node->edgesEnd = edge;
+		edgesBegin = &node->staticFieldsBegin;
+		edgesEnd = &node->staticFieldsEnd;
+	}
+
+	if (*edgesBegin == NULL)
+	{
+		g_assert (*edgesEnd == NULL);
+		*edgesBegin = *edgesEnd = edge;
+	}
+	else
+	{
+		(*edgesEnd)->next = edge;
+		*edgesEnd = edge;
 	}
 }
