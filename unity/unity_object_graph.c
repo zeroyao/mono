@@ -60,6 +60,7 @@ void mono_object_graph_cleanup (MonoObjectGraph* g)
 //////////////////////////////////////////////////////////////////////////////
 
 #define MARK_OBJ(obj) do { (obj)->vtable = (MonoVTable*)(((gsize)(obj)->vtable) | (gsize)1); } while (0)
+#define UNMARK_OBJ(obj) do { (obj)->vtable = (MonoVTable*)(((gsize)(obj)->vtable) & ~(gsize)1); } while (0)
 #define IS_MARKED(obj) (((gsize)(obj)->vtable) & (gsize)1)
 #define GET_VTABLE(obj) ((MonoVTable*)(((gsize)(obj)->vtable) & ~(gsize)1))
 
@@ -109,7 +110,8 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 	ObjectGraphNode* node;
 	MonoObjectGraph* g = ctx->g;
 
-	g_assert (object != NULL && klass != NULL);
+	g_assert (object != NULL);
+	g_assert (!isReference || klass == NULL);
 
 	if (isReference && IS_MARKED (object))
 	{
@@ -126,10 +128,10 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 	qnode->node = node = LINEAR_ALLOC (ObjectGraphNode, sizeof(ObjectGraphNode), g);
 	memset (node, 0, sizeof(ObjectGraphNode));
 	node->object = object;
-	node->klass = klass;
+	node->klass = isReference ? GET_VTABLE(object)->klass : klass ;
 	node->classType = isReference ? ClassType_Reference : ClassType_Value;
-	node->className = klass->name;
-	node->classSize = klass->instance_size;
+	node->className = node->klass->name;
+	node->classSize = node->klass->instance_size;
 
 	if (!isReference || !IS_MARKED (object))
 		mono_object_graph_enque (qnode->node, ctx);
@@ -170,6 +172,7 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	ObjectGraphNode* node;
 	TraverseContext ctx;
 	MonoObjectGraph* g;
+	QueuedNode* qnode;
 
 	GC_stop_world_external ();
 
@@ -184,11 +187,23 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	memset (&ctx, 0, sizeof(TraverseContext));
 	ctx.g = g;
 	for (i = 0; i < numRoots; ++i)
-		g->rootNodes[i] = mono_object_graph_map (g->roots[i], TRUE, GET_VTABLE (g->roots[i])->klass, &ctx);
+		g->rootNodes[i] = mono_object_graph_map (g->roots[i], TRUE, NULL, &ctx);
 
 	while ((node = mono_object_graph_deque (&ctx)) != NULL)
 	{
 		mono_object_graph_traverse_generic (node, &ctx);
+	}
+
+	// clear marks
+	qnode = g->allNodesBegin;
+	while (qnode != NULL)
+	{
+		if ((qnode->node->classType & ~ClassType_Array) == ClassType_Reference)
+		{
+			g_assert (qnode->node->klass == GET_VTABLE(qnode->node->object)->klass);
+			UNMARK_OBJ (qnode->node->object);
+		}
+		qnode = qnode->next;
 	}
 
 	GC_start_world_external ();
@@ -250,7 +265,7 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 			elementObject = mono_array_get (array, MonoObject*, i);
 		}
 
-		elementNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, elementClass, ctx) : NULL;
+		elementNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, isElementValueType ? elementClass : NULL, ctx) : NULL;
 		mono_object_graph_push_edge (node, (const char*)i, elementNode, ctx);
 	}
 }
@@ -300,7 +315,7 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 					MonoObject* val = NULL;
 					mono_field_get_value (object, field, &val);
 					if (val != NULL)
-						edgeNode = mono_object_graph_map (val, TRUE, GET_VTABLE (val)->klass, ctx);
+						edgeNode = mono_object_graph_map (val, TRUE, NULL, ctx);
 				}
 			}
 
