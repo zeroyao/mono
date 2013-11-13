@@ -17,6 +17,7 @@ typedef struct _LinearAllocator
 // graph's node, representing a reference i.e. MonoObject
 struct _ObjectGraphNode
 {
+	guint32				index;
 	MonoObject*			object;
 	MonoClass*			klass;
 	guint32				classType;

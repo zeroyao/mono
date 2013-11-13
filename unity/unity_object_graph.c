@@ -127,6 +127,7 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 	qnode->next = NULL;
 	qnode->node = node = LINEAR_ALLOC (ObjectGraphNode, sizeof(ObjectGraphNode), g);
 	memset (node, 0, sizeof(ObjectGraphNode));
+	node->index = g->numAllNodes++;
 	node->object = object;
 	node->klass = isReference ? GET_VTABLE(object)->klass : klass ;
 	node->classType = isReference ? ClassType_Reference : ClassType_Value;
@@ -149,7 +150,6 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 		g->allNodesEnd->next = qnode;
 		g->allNodesEnd = qnode;
 	}
-	++g->numAllNodes;
 
 	return node;
 }
