@@ -173,6 +173,7 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	memcpy (g->roots, rootObjects, sizeof(MonoObject*) * numRoots);
 	g->rootNodes = LINEAR_ALLOC (ObjectGraphNode*, sizeof(ObjectGraphNode*) * numRoots, g);
 	memset (g->rootNodes, 0, sizeof(ObjectGraphNode*) * numRoots);
+	g->numRoots = numRoots;
 
 	// enqueue roots
 	memset (&ctx, 0, sizeof(TraverseContext));
