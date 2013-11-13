@@ -5,9 +5,7 @@ typedef struct _LinearAllocator LinearAllocator;
 typedef struct _MonoObjectGraph MonoObjectGraph;
 typedef struct _ObjectGraphNode ObjectGraphNode;
 typedef struct _ObjectGraphEdge ObjectGraphEdge;
-//typedef struct _ValueField ValueField;
 typedef struct _QueuedNode QueuedNode;
-typedef enum _EdgeType EdgeType;
 
 typedef struct _LinearAllocator
 {
@@ -21,10 +19,11 @@ struct _ObjectGraphNode
 {
 	MonoObject*			object;
 	MonoClass*			klass;
+	guint32				classType;
+	const char*			className;
+	guint32				classSize;
 	ObjectGraphEdge*	edgesBegin;
 	ObjectGraphEdge*	edgesEnd;
-	//ValueField*			valueFieldsBegin;
-	//ValueField*			valueFieldsEnd;
 };
 
 // graph's edge, representing a field of reference type
@@ -32,24 +31,8 @@ struct _ObjectGraphEdge
 {
 	ObjectGraphEdge*	next;
 	const char*			name;
-	EdgeType			type;
 	ObjectGraphNode*	otherNode;
 };
-
-enum _EdgeType
-{
-	EdgeType_Reference,
-	EdgeType_Value,
-	EdgeType_ArrayElement,
-};
-
-//// a value field
-//struct _ValueField
-//{
-//	ValueField* next;
-//	const char*	name;
-//	MonoClass*	type;
-//};
 
 struct _QueuedNode
 {
@@ -67,6 +50,14 @@ struct _MonoObjectGraph
 
 	QueuedNode*			allNodesBegin;
 	QueuedNode*			allNodesEnd;
+	guint32				numAllNodes;
+};
+
+enum
+{
+	ClassType_Reference	= 0,
+	ClassType_Value		= 1,
+	ClassType_Array		= 0x80000000,
 };
 
 #endif

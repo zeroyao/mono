@@ -103,14 +103,15 @@ ObjectGraphNode* mono_object_graph_deque (TraverseContext* ctx)
 	return ret->node;
 }
 
-ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean hasVTable, MonoClass* klass, TraverseContext* ctx)
+ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference, MonoClass* klass, TraverseContext* ctx)
 {
 	QueuedNode* qnode;
+	ObjectGraphNode* node;
 	MonoObjectGraph* g = ctx->g;
 
 	g_assert (object != NULL && klass != NULL);
 
-	if (hasVTable && IS_MARKED (object))
+	if (isReference && IS_MARKED (object))
 	{
 		for (qnode = g->allNodesBegin; qnode != NULL; qnode = qnode->next)
 		{
@@ -122,15 +123,18 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean hasVTable, 
 
 	qnode = LINEAR_ALLOC (QueuedNode, sizeof(QueuedNode), g);
 	qnode->next = NULL;
-	qnode->node = LINEAR_ALLOC (ObjectGraphNode, sizeof(ObjectGraphNode), g);
-	memset (qnode->node, 0, sizeof(ObjectGraphNode));
-	qnode->node->object = object;
-	qnode->node->klass = klass;
+	qnode->node = node = LINEAR_ALLOC (ObjectGraphNode, sizeof(ObjectGraphNode), g);
+	memset (node, 0, sizeof(ObjectGraphNode));
+	node->object = object;
+	node->klass = klass;
+	node->classType = isReference ? ClassType_Reference : ClassType_Value;
+	node->className = klass->name;
+	node->classSize = klass->instance_size;
 
-	if (!hasVTable || !IS_MARKED(object))
+	if (!isReference || !IS_MARKED (object))
 		mono_object_graph_enque (qnode->node, ctx);
 
-	if (hasVTable)
+	if (isReference)
 		MARK_OBJ (object);
 
 	if (g->allNodesBegin == NULL)
@@ -143,8 +147,9 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean hasVTable, 
 		g->allNodesEnd->next = qnode;
 		g->allNodesEnd = qnode;
 	}
+	++g->numAllNodes;
 
-	return qnode->node;
+	return node;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -154,7 +159,7 @@ extern void GC_start_world_external ();
 static void mono_object_graph_traverse_generic	(ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx);
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, EdgeType edgeType, ObjectGraphNode* reference, TraverseContext* ctx);
+static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* reference, TraverseContext* ctx);
 
 //////////////////////////////////////////////////////////////////////////////
 // Public interface
@@ -226,6 +231,9 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	isElementValueType = elementClass->valuetype;
 	g_assert (elementClass->size_inited != 0);
 
+	g_assert (node->classType == ClassType_Reference);
+	node->classType |= ClassType_Array;
+
 	arrayLength = mono_array_length (array);
 
 	for (i = 0; i < arrayLength; ++i)
@@ -243,7 +251,7 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 		}
 
 		elementNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, elementClass, ctx) : NULL;
-		mono_object_graph_push_edge (node, (const char*)i, EdgeType_ArrayElement, elementNode, ctx);
+		mono_object_graph_push_edge (node, (const char*)i, elementNode, ctx);
 	}
 }
 
@@ -254,7 +262,6 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 
 	guint32 i;
 	MonoClassField* field;
-	EdgeType edgeType;
 	ObjectGraphNode* edgeNode;
 
 	g_assert (object);
@@ -270,7 +277,6 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 			if (field->type->attrs & FIELD_ATTRIBUTE_STATIC)
 				continue;
 
-			edgeType = EdgeType_Value;
 			edgeNode = NULL;
 
 			if (MONO_TYPE_ISSTRUCT (field->type))
@@ -295,16 +301,15 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 					mono_field_get_value (object, field, &val);
 					if (val != NULL)
 						edgeNode = mono_object_graph_map (val, TRUE, GET_VTABLE (val)->klass, ctx);
-					edgeType = EdgeType_Reference;
 				}
 			}
 
-			mono_object_graph_push_edge (node, field->name, edgeType, edgeNode, ctx);
+			mono_object_graph_push_edge (node, field->name, edgeNode, ctx);
 		}
 	}
 }
 
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, EdgeType type, ObjectGraphNode* otherNode, TraverseContext* ctx)
+static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* otherNode, TraverseContext* ctx)
 {
 	ObjectGraphEdge* edge;
 
@@ -313,7 +318,6 @@ static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name
 	edge = LINEAR_ALLOC (ObjectGraphEdge, sizeof(ObjectGraphEdge), ctx->g);
 	memset (edge, 0, sizeof(ObjectGraphEdge));
 	edge->name = name;
-	edge->type = type;
 	edge->otherNode = otherNode;
 
 	if (node->edgesBegin == NULL)
