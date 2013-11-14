@@ -23,7 +23,7 @@ struct _ObjectGraphNode
 	guint16				isArray;
 	guint16				type;
 	const char*			typeName;
-	guint32				typeSize;
+	guint32				objectSize;
 	ObjectGraphField*	fields;
 	guint32				numFields;
 	ObjectGraphField*	staticFields;

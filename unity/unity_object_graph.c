@@ -132,7 +132,7 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 	node->klass = isReference ? GET_VTABLE(object)->klass : klass ;
 	node->type = isReference ? Type_Reference : Type_Value;
 	node->typeName = node->klass->name;
-	node->typeSize = node->klass->instance_size;
+	node->objectSize = node->klass->instance_size;
 
 	if (!isReference || !IS_MARKED (object))
 		mono_object_graph_enque (qnode->node, ctx);
@@ -160,6 +160,7 @@ extern void GC_stop_world_external ();
 extern void GC_start_world_external ();
 static void mono_object_graph_traverse_generic	(ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseContext* ctx);
+static void mono_object_graph_traverse_string (ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx);
 
 //////////////////////////////////////////////////////////////////////////////
@@ -222,6 +223,8 @@ static void mono_object_graph_traverse_generic (ObjectGraphNode* node, TraverseC
 {
 	if (node->klass->rank)
 		mono_object_graph_traverse_array (node, ctx);
+	else if (node->klass->byval_arg.type == MONO_TYPE_STRING)
+		mono_object_graph_traverse_string (node, ctx);
 	else
 		mono_object_graph_traverse_object (node, ctx);
 }
@@ -233,23 +236,25 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	MonoClass* klass = node->klass;
 
 	MonoClass* elementClass;
+	gint32 elementSize;
 	gboolean isStruct;
 	gboolean isReference;
 
 	mono_array_size_t arrayLength, i;
-	gint32 elementClassSize;
 	MonoObject* elementObject;
 
 	g_assert (object);
 	elementClass = klass->element_class;
+	elementSize = mono_class_array_element_size (elementClass);
 	isStruct = MONO_TYPE_ISSTRUCT (&elementClass->byval_arg);
 	isReference = MONO_TYPE_IS_REFERENCE (&elementClass->byval_arg);
 	g_assert (elementClass->size_inited != 0);
 
+	arrayLength = mono_array_length (array);
+
 	g_assert (node->type == Type_Reference);
 	node->isArray = TRUE;
-
-	arrayLength = mono_array_length (array);
+	node->objectSize += elementSize * arrayLength;
 
 	node->fields = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * arrayLength, ctx->g);
 	node->numFields = arrayLength;
@@ -260,8 +265,7 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 		elementObject = NULL;
 		if (isStruct)
 		{
-			elementClassSize = mono_class_array_element_size (elementClass);
-			elementObject = (MonoObject*)mono_array_addr_with_size (array, elementClassSize, i);
+			elementObject = (MonoObject*)mono_array_addr_with_size (array, elementSize, i);
 			// subtract the added offset for the vtable. This is added to the offset even though it is a struct
 			--elementObject;
 		}
@@ -276,6 +280,16 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 		if (elementObject != NULL)
 			node->fields[i].otherNode = mono_object_graph_map (elementObject, isReference, isReference ? NULL : elementClass, ctx);
 	}
+}
+
+static void mono_object_graph_traverse_string (ObjectGraphNode* node, TraverseContext* ctx)
+{
+	MonoObject* object = node->object;
+	MonoClass* klass = node->klass;
+	g_assert (klass == mono_defaults.string_class);
+
+	// TODO: interned string
+	node->objectSize += (((MonoString*)object)->length + 1) * 2;
 }
 
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx)
