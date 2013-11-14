@@ -250,6 +250,7 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	arrayLength = mono_array_length (array);
 
 	node->fields = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * arrayLength, ctx->g);
+	node->numFields = arrayLength;
 
 	for (i = 0; i < arrayLength; ++i)
 	{
