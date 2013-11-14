@@ -130,9 +130,9 @@ ObjectGraphNode* mono_object_graph_map (MonoObject* object, gboolean isReference
 	node->index = g->numAllNodes++;
 	node->object = object;
 	node->klass = isReference ? GET_VTABLE(object)->klass : klass ;
-	node->classType = isReference ? ClassType_Reference : ClassType_Value;
-	node->className = node->klass->name;
-	node->classSize = node->klass->instance_size;
+	node->type = isReference ? Type_Reference : Type_Value;
+	node->typeName = node->klass->name;
+	node->typeSize = node->klass->instance_size;
 
 	if (!isReference || !IS_MARKED (object))
 		mono_object_graph_enque (qnode->node, ctx);
@@ -197,7 +197,7 @@ MonoObjectGraph* mono_unity_object_graph_dump (MonoObject** rootObjects, guint32
 	qnode = g->allNodesBegin;
 	while (qnode != NULL)
 	{
-		if ((qnode->node->classType & ~ClassType_Array) == ClassType_Reference)
+		if (qnode->node->type == Type_Reference)
 		{
 			g_assert (qnode->node->klass == GET_VTABLE(qnode->node->object)->klass);
 			UNMARK_OBJ (qnode->node->object);
@@ -233,7 +233,8 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	MonoClass* klass = node->klass;
 
 	MonoClass* elementClass;
-	gboolean isElementValueType;
+	gboolean isStruct;
+	gboolean isReference;
 
 	mono_array_size_t arrayLength, i;
 	gint32 elementClassSize;
@@ -241,33 +242,39 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 
 	g_assert (object);
 	elementClass = klass->element_class;
-	isElementValueType = elementClass->valuetype;
+	isStruct = MONO_TYPE_ISSTRUCT (&elementClass->byval_arg);
+	isReference = MONO_TYPE_IS_REFERENCE (&elementClass->byval_arg);
 	g_assert (elementClass->size_inited != 0);
 
-	g_assert (node->classType == ClassType_Reference);
-	node->classType |= ClassType_Array;
+	g_assert (node->type == Type_Reference);
+	node->isArray = TRUE;
 
 	arrayLength = mono_array_length (array);
 
 	node->fields = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * arrayLength, ctx->g);
 	node->numFields = arrayLength;
+	memset (node->fields, 0, sizeof(ObjectGraphField) * arrayLength);
 
 	for (i = 0; i < arrayLength; ++i)
 	{
-		if (isElementValueType)
+		elementObject = NULL;
+		if (isStruct)
 		{
 			elementClassSize = mono_class_array_element_size (elementClass);
 			elementObject = (MonoObject*)mono_array_addr_with_size (array, elementClassSize, i);
 			// subtract the added offset for the vtable. This is added to the offset even though it is a struct
 			--elementObject;
 		}
-		else
+		else if (isReference)
 		{
 			elementObject = mono_array_get (array, MonoObject*, i);
 		}
 
 		node->fields[i].name = (const char*)i;
-		node->fields[i].otherNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, isElementValueType ? elementClass : NULL, ctx) : NULL;
+		node->fields[i].type = isReference ? Type_Reference : Type_Value;
+		node->fields[i].typeName = mono_type_get_name (&elementClass->byval_arg);
+		if (elementObject != NULL)
+			node->fields[i].otherNode = mono_object_graph_map (elementObject, isReference, isReference ? NULL : elementClass, ctx);
 	}
 }
 
@@ -281,6 +288,7 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 	guint32 fieldCount, staticFieldCount;
 	MonoClassField* field;
 	ObjectGraphNode* fieldNode;
+	ObjectGraphField* gfield;
 
 	g_assert (object);
 
@@ -338,18 +346,13 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 				}
 			}
 
-			if (field->type->attrs & FIELD_ATTRIBUTE_STATIC)
-			{
-				node->staticFields[staticFieldCount].name = field->name;
-				node->staticFields[staticFieldCount].otherNode = fieldNode;
-				++staticFieldCount;
-			}
-			else
-			{
-				node->fields[fieldCount].name = field->name;
-				node->fields[fieldCount].otherNode = fieldNode;
-				++fieldCount;
-			}
+			gfield = field->type->attrs & FIELD_ATTRIBUTE_STATIC
+					 ? &node->staticFields[staticFieldCount++]
+					 : &node->fields[fieldCount++];
+			gfield->name = field->name;
+			gfield->type = MONO_TYPE_IS_REFERENCE (field->type) ? Type_Reference : Type_Value;
+			gfield->typeName = mono_type_get_name (field->type);
+			gfield->otherNode = fieldNode;
 		}
 	}
 }

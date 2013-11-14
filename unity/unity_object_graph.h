@@ -20,9 +20,10 @@ struct _ObjectGraphNode
 	guint32				index;
 	MonoObject*			object;
 	MonoClass*			klass;
-	guint32				classType;
-	const char*			className;
-	guint32				classSize;
+	guint16				isArray;
+	guint16				type;
+	const char*			typeName;
+	guint32				typeSize;
 	ObjectGraphField*	fields;
 	guint32				numFields;
 	ObjectGraphField*	staticFields;
@@ -33,6 +34,8 @@ struct _ObjectGraphNode
 struct _ObjectGraphField
 {
 	const char*			name;
+	guint32				type;
+	const char*			typeName;
 	ObjectGraphNode*	otherNode;
 };
 
@@ -57,9 +60,8 @@ struct _MonoObjectGraph
 
 enum
 {
-	ClassType_Reference	= 0,
-	ClassType_Value		= 1,
-	ClassType_Array		= 0x80000000,
+	Type_Reference	= 0,
+	Type_Value		= 1
 };
 
 #endif
