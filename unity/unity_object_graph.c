@@ -161,7 +161,6 @@ extern void GC_start_world_external ();
 static void mono_object_graph_traverse_generic	(ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseContext* ctx);
 static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseContext* ctx);
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* reference, gboolean isStatic, TraverseContext* ctx);
 
 //////////////////////////////////////////////////////////////////////////////
 // Public interface
@@ -239,7 +238,6 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	mono_array_size_t arrayLength, i;
 	gint32 elementClassSize;
 	MonoObject* elementObject;
-	ObjectGraphNode* elementNode;
 
 	g_assert (object);
 	elementClass = klass->element_class;
@@ -250,6 +248,8 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 	node->classType |= ClassType_Array;
 
 	arrayLength = mono_array_length (array);
+
+	node->fields = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * arrayLength, ctx->g);
 
 	for (i = 0; i < arrayLength; ++i)
 	{
@@ -265,8 +265,8 @@ static void mono_object_graph_traverse_array (ObjectGraphNode* node, TraverseCon
 			elementObject = mono_array_get (array, MonoObject*, i);
 		}
 
-		elementNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, isElementValueType ? elementClass : NULL, ctx) : NULL;
-		mono_object_graph_push_edge (node, (const char*)i, elementNode, FALSE, ctx);
+		node->fields[i].name = (const char*)i;
+		node->fields[i].otherNode = elementObject != NULL ? mono_object_graph_map (elementObject, !isElementValueType, isElementValueType ? elementClass : NULL, ctx) : NULL;
 	}
 }
 
@@ -274,21 +274,42 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 {
 	MonoObject* object = node->object;
 	MonoClass* klass = node->klass;
+	MonoClass* k;
 
 	guint32 i;
+	guint32 fieldCount, staticFieldCount;
 	MonoClassField* field;
 	ObjectGraphNode* fieldNode;
 
 	g_assert (object);
 
-	for (; klass != NULL; klass = klass->parent)
+	fieldCount = staticFieldCount = 0;
+	for (k = klass; k != NULL; k = k->parent)
 	{
-		if (klass->size_inited == 0)
+		if (k->size_inited == 0)
+			continue;
+		for (i = 0; i < k->field.count; ++i)
+		{
+			if (k->fields[i].type->attrs & FIELD_ATTRIBUTE_STATIC)
+				++staticFieldCount;
+			else
+				++fieldCount;
+		}
+	}
+	node->fields = fieldCount != 0 ? LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * fieldCount, ctx->g) : NULL;
+	node->numFields = fieldCount;
+	node->staticFields = staticFieldCount != 0 ? LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField) * staticFieldCount, ctx->g) : NULL;
+	node->numStaticFields = staticFieldCount;
+
+	fieldCount = staticFieldCount = 0;
+	for (k = klass; k != NULL; k = k->parent)
+	{
+		if (k->size_inited == 0)
 			continue;
 
-		for (i = 0; i < klass->field.count; ++i)
+		for (i = 0; i < k->field.count; ++i)
 		{
-			field = &klass->fields[i];
+			field = &k->fields[i];
 			fieldNode = NULL;
 
 			if (MONO_TYPE_ISSTRUCT (field->type))
@@ -316,43 +337,18 @@ static void mono_object_graph_traverse_object (ObjectGraphNode* node, TraverseCo
 				}
 			}
 
-			mono_object_graph_push_edge (node, field->name, fieldNode, field->type->attrs & FIELD_ATTRIBUTE_STATIC, ctx);
+			if (field->type->attrs & FIELD_ATTRIBUTE_STATIC)
+			{
+				node->staticFields[staticFieldCount].name = field->name;
+				node->staticFields[staticFieldCount].otherNode = fieldNode;
+				++staticFieldCount;
+			}
+			else
+			{
+				node->fields[fieldCount].name = field->name;
+				node->fields[fieldCount].otherNode = fieldNode;
+				++fieldCount;
+			}
 		}
-	}
-}
-
-static void mono_object_graph_push_edge (ObjectGraphNode* node, const char* name, ObjectGraphNode* otherNode, gboolean isStatic, TraverseContext* ctx)
-{
-	ObjectGraphField* edge;
-	ObjectGraphField** edgesBegin;
-	ObjectGraphField** edgesEnd;
-
-	g_assert (node != NULL);
-
-	edge = LINEAR_ALLOC (ObjectGraphField, sizeof(ObjectGraphField), ctx->g);
-	memset (edge, 0, sizeof(ObjectGraphField));
-	edge->name = name;
-	edge->otherNode = otherNode;
-
-	if (!isStatic)
-	{
-		edgesBegin = &node->fieldsBegin;
-		edgesEnd = &node->fieldsEnd;
-	}
-	else
-	{
-		edgesBegin = &node->staticFieldsBegin;
-		edgesEnd = &node->staticFieldsEnd;
-	}
-
-	if (*edgesBegin == NULL)
-	{
-		g_assert (*edgesEnd == NULL);
-		*edgesBegin = *edgesEnd = edge;
-	}
-	else
-	{
-		(*edgesEnd)->next = edge;
-		*edgesEnd = edge;
 	}
 }

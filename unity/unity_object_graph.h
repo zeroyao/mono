@@ -23,16 +23,15 @@ struct _ObjectGraphNode
 	guint32				classType;
 	const char*			className;
 	guint32				classSize;
-	ObjectGraphField*	fieldsBegin;
-	ObjectGraphField*	fieldsEnd;
-	ObjectGraphField*	staticFieldsBegin;
-	ObjectGraphField*	staticFieldsEnd;
+	ObjectGraphField*	fields;
+	guint32				numFields;
+	ObjectGraphField*	staticFields;
+	guint32				numStaticFields;
 };
 
 // graph's edge, representing a field
 struct _ObjectGraphField
 {
-	ObjectGraphField*	next;
 	const char*			name;
 	ObjectGraphNode*	otherNode;
 };
